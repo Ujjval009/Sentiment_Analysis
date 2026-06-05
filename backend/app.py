@@ -3,9 +3,10 @@ import sys
 import string
 import logging
 import joblib
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,10 +52,12 @@ log.info("All model artifacts loaded. Ready to serve requests.")
 
 app = FastAPI(title="Emotion Detection API")
 
+origins = os.getenv("CORS_ORIGINS", "*").split(",")
+allow_creds = origins != ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=origins,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -78,7 +81,7 @@ COLOR_MAP = {
 }
 
 class TextInput(BaseModel):
-    text: str
+    text: str = Field(..., max_length=1000, min_length=1)
 
 def preprocess(text):
     text = text.lower()
@@ -86,11 +89,6 @@ def preprocess(text):
     text = ''.join(c for c in text if not c.isdigit())
     text = ''.join(c for c in text if c.isascii())
     return text
-
-@app.get("/")
-def root():
-    log.info("GET / - health check OK")
-    return {"message": "Emotion Detection API is running"}
 
 @app.get("/emotions")
 def get_emotions():
@@ -104,9 +102,9 @@ def get_emotions():
 
 @app.post("/predict")
 def predict(input: TextInput):
-    log.info("POST /predict - input text: '%s'", input.text[:60])
+    log.info("POST /predict - input text: '%s'", input.text[:120])
+
     processed = preprocess(input.text)
-    log.info("After preprocessing: '%s'", processed[:60])
     features = vectorizer.transform([processed])
     probs = model.predict_proba(features)[0]
     pred_class = int(model.predict(features)[0])
@@ -131,7 +129,19 @@ def predict(input: TextInput):
     log.info("Response sent successfully")
     return result
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+FRONTEND_DIR = os.path.join(BASE, "..", "frontend", "dist")
+if os.path.isdir(FRONTEND_DIR):
+    log.info("Mounting frontend static files from: %s", FRONTEND_DIR)
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+else:
+    log.warning("Frontend dist not found at %s — SPA not mounted", FRONTEND_DIR)
+
 if __name__ == "__main__":
     import uvicorn
-    log.info("Starting uvicorn on 0.0.0.0:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    port = int(os.getenv("PORT", 8000))
+    log.info("Starting uvicorn on 0.0.0.0:%d", port)
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
