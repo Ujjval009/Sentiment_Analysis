@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import './App.css'
 
+const API = import.meta.env.VITE_API_URL || ''
+
 function App() {
   const [text, setText] = useState('')
   const [result, setResult] = useState(null)
@@ -8,27 +10,18 @@ function App() {
   const [darkMode, setDarkMode] = useState(true)
 
   const predict = async () => {
-    if (!text.trim()) {
-      console.log('[Frontend] Empty input, skipping')
-      return
-    }
-    console.log('[Frontend] Sending prediction request:', text)
+    if (!text.trim()) return
     setLoading(true)
     setResult(null)
     try {
-      const url = '/predict'
-      console.log('[Frontend] POST', url)
-      const res = await fetch(url, {
+      const res = await fetch(`${API}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       })
-      console.log('[Frontend] Response status:', res.status, res.statusText)
       const data = await res.json()
-      console.log('[Frontend] Response data:', data)
       setResult(data)
     } catch (err) {
-      console.error('[Frontend] Fetch error:', err.message)
       setResult({ emotion: 'error', confidence: 0, emoji: '❌', color: '#ff4444' })
     }
     setLoading(false)
